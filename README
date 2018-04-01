@@ -1,0 +1,81 @@
+Proof of concept to use symbol versioning with GNU ld to avoid duplicate symbol definitions
+===========================================================================================
+
+int mysqlrt(void) is defined in both a shared library ("liba.so")
+and in the main program ("main.c").
+
+To build, use FreeBSD make.
+
+Full build log:
+
+===> liba (clean)
+rm -f a.out a.o a.o.tmp 
+rm -f a.po  a.po.tmp
+rm -f a.So a.so a.So.tmp
+rm -f liba.a liba_p.a liba.so liba_pic.a
+===> main (clean)
+rm -f main main.o main.1.gz main.1.cat.gz
+===> liba (all)
+Warning: Object directory not changed from original /home/saper/sw/link-script-poc/liba
+cc  -O2 -pipe   -std=gnu99 -Qunused-arguments  -fstack-protector   -c a.c -o a.o
+building static a library
+ranlib -D liba.a
+cc -pg  -O2 -pipe   -std=gnu99 -Qunused-arguments  -fstack-protector   -c a.c -o a.po
+building profiled a library
+ranlib -D liba_p.a
+cc -fpic -DPIC  -O2 -pipe   -std=gnu99 -Qunused-arguments  -fstack-protector   -c a.c -o a.So
+building shared library liba.so
+cc  -Wl,--version-script=liba.ld -fstack-protector -shared -Wl,-x -Wl,--fatal-warnings -Wl,--warn-shared-textrel  -o liba.so -Wl,-soname,liba.so  `NM='nm' lorder a.So | tsort -q` 
+building special pic a library
+ranlib -D liba_pic.a
+===> main (all)
+Warning: Object directory not changed from original /home/saper/sw/link-script-poc/main
+cc -O2 -pipe   -std=gnu99 -Qunused-arguments  -fstack-protector   -c main.c -o main.o
+cc -O2 -pipe   -std=gnu99 -Qunused-arguments  -fstack-protector    -L/home/saper/sw/link-script-poc/main/../liba -la -o main main.o 
+gzip -cn main.1 > main.1.gz
+
+liba.so symbols:
+
+liba/liba.so:     file format elf64-x86-64-freebsd
+
+DYNAMIC SYMBOL TABLE:
+0000000000000470 l    d  .init	0000000000000000              .init
+0000000000000000  w   DF *UND*	00000000000001dc  FBSD_1.0    __cxa_finalize
+0000000000000000  w   D  *UND*	0000000000000000              _Jv_RegisterClasses
+0000000000000000 g    DO *ABS*	0000000000000000  LIBA_1.0    LIBA_1.0
+0000000000200858 g    D  *ABS*	0000000000000000  Base        _end
+0000000000200858 g    D  *ABS*	0000000000000000  Base        _edata
+0000000000200858 g    D  *ABS*	0000000000000000  Base        __bss_start
+0000000000000470 g    DF .init	0000000000000000  Base        _init
+0000000000000540 g    DF .text	000000000000000b  LIBA_1.0    mysqlrt
+0000000000000598 g    DF .fini	0000000000000000  Base        _fini
+0000000000000550 g    DF .text	000000000000000b  LIBA_1.0    other
+
+main symbols:
+
+main/main:     file format elf64-x86-64-freebsd
+
+DYNAMIC SYMBOL TABLE:
+0000000000000000  w   D  *UND*	0000000000000000              _Jv_RegisterClasses
+0000000000000000      DF *UND*	0000000000000029  FBSD_1.0    atexit
+0000000000000000      DF *UND*	000000000000000b  LIBA_1.0    other
+0000000000000000      DF *UND*	0000000000000006  FBSD_1.0    _init_tls
+0000000000000000      DF *UND*	0000000000000036  FBSD_1.0    exit
+0000000000600b30 g    DO .bss	0000000000000008  Base        environ
+0000000000600b38 g    D  *ABS*	0000000000000000  Base        _end
+0000000000600b2c g    D  *ABS*	0000000000000000  Base        _edata
+0000000000600b10 g    DO .data	0000000000000008  Base        __progname
+0000000000600b2c g    D  *ABS*	0000000000000000  Base        __bss_start
+00000000004007f0 g    DF .text	000000000000000b  Base        mysqlrt
+
+$ env LD_LIBRARY_PATH=liba ldd main/main
+
+main/main:
+	liba.so => liba/liba.so (0x800820000)
+	libc.so.7 => /lib/libc.so.7 (0x800a21000)
+
+And the program returns 3:
+
+$ env LD_LIBRARY_PATH=liba ./main/main
+$ echo $?
+3

@@ -1,0 +1,8 @@
+*.o
+*.a
+*.so
+*.1.gz
+*.So
+*.po
+
+/main/main
